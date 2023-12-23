@@ -1,0 +1,126 @@
+function onEdit(e) {
+var range = e.range;
+var sheet = range.getSheet();
+if (sheet.getName() === 'testincoming') {
+var editedColumn = range.getColumn();
+
+switch (editedColumn) {
+case getColumnNumber('V'):
+processFirstChange();
+break;
+case getColumnNumber('Z'):
+processSubsequentChange('Z', '31yesCoverage', '32otherCoverage', '33noCoverage', 'AR', 'AM');
+break;
+case getColumnNumber('AD'):
+processSubsequentChange('AD', '51yesOps', '52noOps', '', 'AT', 'AM');
+break;
+case getColumnNumber('AN'):
+processSubsequentChange('AN', '61startDate', '62bDenied', '', 'AV', 'AM');
+break;
+}
+}
+}
+
+function getColumnNumber(columnLetter) {
+return SpreadsheetApp.getActiveSpreadsheet().getActiveSheet().getRange(columnLetter + '1').getColumn();
+}
+
+function processFirstChange() {
+var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+var row = sheet.getActiveRange().getRow();
+var inputValue = sheet.getRange('V' + row).getValue();
+var emailTemplate = inputValue === 'INVALID' ? '12invalidRequest' : '11requestReceived';
+var emailAddresses = sheet.getRange('AX' + row).getValue().split(',');
+var result = sendEmail(emailAddresses, emailTemplate, row, 'AP', 'AN');
+sheet.getRange('AP' + row).setValue(result);
+}
+
+function processSubsequentChange(column, template1, template2, template3, logColumn, threadColumn) {
+var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+var row = sheet.getActiveRange().getRow();
+var inputValue = sheet.getRange('Z' + row).getValue();
+var emailTemplate = (inputValue === 'YES COVERAGE') ? '31yesCoverage' :
+(inputValue === 'OTHER COVERAGE') ? '32otherCoverage' :
+(inputValue === 'NO COVERAGE') ? '33noCoverage' : '';
+
+// Populate dynamic content if applicable
+if (emailTemplate === '32otherCoverage') {
+emailTemplate = populateDynamicContent(emailTemplate, 'X', row);
+}
+if (emailTemplate === '61startDate') {
+emailTemplate = populateDynamicContent(emailTemplate, 'AK', row);
+emailTemplate = populateDynamicContent(emailTemplate, 'AE', row);
+}
+
+var emailAddresses = sheet.getRange('AX' + row).getValue().split(',');
+var threadId = sheet.getRange(threadColumn + row).getValue();
+var result = sendThreadedEmail(emailAddresses, emailTemplate, row, logColumn, threadId);
+sheet.getRange(logColumn + row).setValue(result);
+}
+
+function sendEmail(recipients, templateName, row, logColumn, threadIdColumn) {
+    try {
+        var htmlBody = HtmlService.createHtmlOutputFromFile(templateName).getContent();
+        var subject = "A Transportation Hub Update"; // Modify as needed
+        GmailApp.sendEmail(recipients.join(','), subject, '', {htmlBody: htmlBody});
+
+        // Retrieve the thread ID of the sent email
+        var threads = GmailApp.search('subject:"' + subject + '" to:' + recipients.join(',') + '');
+        if (threads.length > 0) {
+            var threadId = threads[0].getId();
+            SpreadsheetApp.getActiveSpreadsheet().getActiveSheet().getRange(threadIdColumn + row).setValue(threadId);
+        } else {
+            throw new Error("Thread not found");
+        }
+
+        return new Date(); // Timestamp for successful send
+    } catch (error) {
+        return 'Error: ' + error.message;
+    }
+}
+
+function sendThreadedEmail(recipients, templateName, row, logColumn, threadId) {
+try {
+var htmlBody = HtmlService.createHtmlOutputFromFile(templateName).getContent();
+var emailThread = GmailApp.getThreadById(threadId);
+emailThread.replyAll('', {htmlBody: htmlBody});
+
+return new Date(); // Timestamp for successful send
+} catch (error) {
+return 'Error: ' + error.message;
+}
+}
+
+function populateDynamicContent(templateName, column, row) {
+var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+var data = sheet.getRange(column + row).getValue();
+var htmlBody = HtmlService.createHtmlOutputFromFile(templateName).getContent();
+return htmlBody.replace('{{' + column + '}}', data);
+}
+
+function validateEmail(email) {
+var emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+return emailRegex.test(email);
+}
+
+// Additional error logging function as needed
+
+
+
+function createOnEditTrigger() {
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // Delete any existing triggers with the same function name
+  var existingTriggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < existingTriggers.length; i++) {
+    if (existingTriggers[i].getHandlerFunction() == "onEdit") {
+      ScriptApp.deleteTrigger(existingTriggers[i]);
+    }
+  }
+  
+  // Create a new trigger for the "onEdit" function
+  ScriptApp.newTrigger("onEdit")
+      .forSpreadsheet(spreadsheet)
+      .onEdit()
+      .create();
+}
