@@ -61,11 +61,14 @@ sheet.getRange(logColumn + row).setValue(result);
 function sendEmail(recipients, templateName, row, logColumn, threadIdColumn) {
     try {
         var htmlBody = HtmlService.createHtmlOutputFromFile(templateName).getContent();
-        var subject = "A Transportation Hub Update"; // Modify as needed
+        // Include a unique identifier in the subject
+        var uniqueId = new Date().getTime(); // Example: Timestamp as a unique identifier
+        var subject = "A Transportation Hub Update #" + uniqueId; 
+
         GmailApp.sendEmail(recipients.join(','), subject, '', {htmlBody: htmlBody});
 
         // Retrieve the thread ID of the sent email
-        var threads = GmailApp.search('subject:"' + subject + '" to:' + recipients.join(',') + '');
+        var threads = GmailApp.search('subject:"' + subject + '"');
         if (threads.length > 0) {
             var threadId = threads[0].getId();
             SpreadsheetApp.getActiveSpreadsheet().getActiveSheet().getRange(threadIdColumn + row).setValue(threadId);
@@ -123,4 +126,10 @@ function createOnEditTrigger() {
       .forSpreadsheet(spreadsheet)
       .onEdit()
       .create();
+}
+
+
+function requestGmailAccess() {
+    var threads = GmailApp.search('in:inbox');
+    Logger.log('Access granted. Number of threads in inbox: ' + threads.length);
 }
